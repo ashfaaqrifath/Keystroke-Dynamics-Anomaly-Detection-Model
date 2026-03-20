@@ -1,2 +1,2 @@
-# Behavioral-Anomaly-Detection-Model
-Behavioral Anomaly Detection Model - Sentry
+# Keystroke-Dynamics-Anomaly-Detection-Model
+Keystroke Dynamics Anomaly Detection Model - Sentry
