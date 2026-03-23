@@ -46,8 +46,8 @@ if os.path.exists(MODEL_FILE):
                 'std': df[col].std()
             }
 else:
-    print(f"Will train baseline after {MIN_WINDOWS_TO_TRAIN} active windows "
-          f"(each window = {IDLE_CHECK_INTERVAL}s of typing).")
+    print(f"Will train baseline after {MIN_WINDOWS_TO_TRAIN} active windows")
+    print(f"(each window = {IDLE_CHECK_INTERVAL}s of typing).")
     model = IsolationForest(contamination=0.05, random_state=42)
 
 
