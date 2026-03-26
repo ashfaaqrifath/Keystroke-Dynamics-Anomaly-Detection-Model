@@ -167,10 +167,11 @@ def detect_anomaly(feature_dict):
 
 
 def main_loop():
-    global feature_vectors, data_updated
+    global feature_vectors, data_updated, last_train_time
+
+    last_train_time = time.time() - IDLE_CHECK_INTERVAL
 
     while True:
-        time.sleep(IDLE_CHECK_INTERVAL)
 
         if not data_updated:
             continue
@@ -185,8 +186,12 @@ def main_loop():
 
             pd.DataFrame(feature_vectors).to_csv(DATA_FILE, index=False)
 
-            train_baseline()
             detect_anomaly(new_features)
+
+            now = time.time()
+            if now - last_train_time >= IDLE_CHECK_INTERVAL:
+                train_baseline()
+                last_train_time = now
 
         data_updated = False
 
