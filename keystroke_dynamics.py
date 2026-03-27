@@ -6,18 +6,20 @@ import numpy as np
 from pynput import keyboard
 from sklearn.ensemble import IsolationForest
 import joblib
+from collections import deque
 
 
 WINDOW_SIZE = 300               # Max number of keystroke events kept in memory
-MIN_WINDOWS_TO_TRAIN = 50       # How many feature windows are needed before training
+MIN_TRAINING_WINDOWS = 60       # How many feature windows are needed before training
 MODEL_FILE = "keystroke_model.pkl"
 DATA_FILE = "typing_features.csv"
-IDLE_CHECK_INTERVAL = 5
-MIN_EVENTS_FOR_FEATURE = 5
+IDLE_CHECK_INTERVAL = 4
+MIN_FEATURE_EVENTS = 5
+EVENT_WINDOW_SECONDS = 10
 
 
 #timestamp, event_type, key
-key_events = []
+key_events = deque()
 #for dwell calc
 pressed_keys = {}
 
@@ -46,7 +48,7 @@ if os.path.exists(MODEL_FILE):
                 'std': df[col].std()
             }
 else:
-    print(f"Will train baseline after {MIN_WINDOWS_TO_TRAIN} active windows")
+    print(f"Will train baseline after {MIN_TRAINING_WINDOWS} active windows")
     print(f"(each window = {IDLE_CHECK_INTERVAL}s of typing).")
     model = IsolationForest(contamination=0.05, random_state=42)
 
@@ -56,16 +58,20 @@ def on_key_press(key):
     t = time.time()
     key_events.append((t, 'press', key))
     pressed_keys[key] = t
-    if len(key_events) > WINDOW_SIZE:
-        key_events.pop(0)
+
+    while key_events and key_events[0][0] < t - EVENT_WINDOW_SECONDS:
+        key_events.popleft()
+
     data_updated = True
 
 def on_key_release(key):
     global data_updated
     t = time.time()
     key_events.append((t, 'release', key))
-    if len(key_events) > WINDOW_SIZE:
-        key_events.pop(0)
+
+    while key_events and key_events[0][0] < t - EVENT_WINDOW_SECONDS:
+        key_events.popleft()
+
     if key in pressed_keys:
         del pressed_keys[key]
     data_updated = True
@@ -102,14 +108,14 @@ def extract_features_from_raw():
         features['inter_press_mean'] = features['inter_press_std'] = 0
 
     #Dwell times
-    if len(dwell_times) >= MIN_EVENTS_FOR_FEATURE:
+    if len(dwell_times) >= MIN_FEATURE_EVENTS:
         features['dwell_mean'] = np.mean(dwell_times)
         features['dwell_std'] = np.std(dwell_times)
     else:
         features['dwell_mean'] = features['dwell_std'] = 0
 
     #Flight times
-    if len(flight_times) >= MIN_EVENTS_FOR_FEATURE:
+    if len(flight_times) >= MIN_FEATURE_EVENTS:
         features['flight_mean'] = np.mean(flight_times)
         features['flight_std'] = np.std(flight_times)
     else:
@@ -120,7 +126,7 @@ def extract_features_from_raw():
 
 def train_baseline():
     global baseline_ready, feature_stats
-    if len(feature_vectors) >= MIN_WINDOWS_TO_TRAIN and not baseline_ready:
+    if len(feature_vectors) >= MIN_TRAINING_WINDOWS and not baseline_ready:
         df = pd.DataFrame(feature_vectors)
         model.fit(df)
         joblib.dump(model, MODEL_FILE)
@@ -167,11 +173,10 @@ def detect_anomaly(feature_dict):
 
 
 def main_loop():
-    global feature_vectors, data_updated, last_train_time
-
-    last_train_time = time.time() - IDLE_CHECK_INTERVAL
+    global feature_vectors, data_updated
 
     while True:
+        time.sleep(IDLE_CHECK_INTERVAL)
 
         if not data_updated:
             continue
@@ -186,12 +191,8 @@ def main_loop():
 
             pd.DataFrame(feature_vectors).to_csv(DATA_FILE, index=False)
 
+            train_baseline()
             detect_anomaly(new_features)
-
-            now = time.time()
-            if now - last_train_time >= IDLE_CHECK_INTERVAL:
-                train_baseline()
-                last_train_time = now
 
         data_updated = False
 
